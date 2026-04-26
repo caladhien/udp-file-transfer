@@ -12,17 +12,18 @@ public class PacketSerializer {
     private static final int MD5_SIZE = 16;
 
     public byte[] serialize(Packet packet) {
-
-        if (packet.getSequenceNumber() == 0) return serializeFirst(packet);
-        else if (packet.getMd5() != null) return serializeLast(packet);
-        else return serializeData(packet);
-
+        if (packet.getType() == PacketType.FIRST) return serializeFirst(packet);
+        if (packet.getType() == PacketType.LAST) return serializeLast(packet);
+        return serializeData(packet);
     }
 
     public Packet deserialize(byte[] bytes) {
 
-        ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        buffer.order(ByteOrder.BIG_ENDIAN);
+        if (bytes.length < TRANSMISSION_ID_SIZE + SEQUENCE_NUMBER_SIZE) {
+            throw new IllegalArgumentException("Packet too small");
+        }
+
+        ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN);
 
         Packet p = new Packet();
 
@@ -32,15 +33,25 @@ public class PacketSerializer {
         p.setTransmissionId(transId);
         p.setSequenceNumber(seqNr);
 
-        if (seqNr == 0) deserializeFirst(buffer, p);
-        else if (buffer.remaining() == MD5_SIZE) deserializeLast(buffer, p);
-        else deserializeData(buffer, p);
+        if (seqNr == 0) {
+            p.setType(PacketType.FIRST);
+            deserializeFirst(buffer, p);
+        }
+        else if (buffer.remaining() == MD5_SIZE) {
+            p.setType(PacketType.LAST);
+            deserializeLast(buffer, p);
+        }
+        else {
+            p.setType(PacketType.DATA);
+            deserializeData(buffer, p);
+        }
 
         return p;
     }
 
-    //  FIRST
-
+    /**
+     * =============================== FIRST ===============================
+     */
     private byte[] serializeFirst(Packet p) {
 
         byte[] fileNameBytes = p.getFileName().getBytes(StandardCharsets.UTF_8);
@@ -59,6 +70,10 @@ public class PacketSerializer {
 
     private void deserializeFirst(ByteBuffer buffer, Packet p) {
 
+        if (buffer.remaining() < MAX_SEQUENCE_NUMBER_SIZE) {
+            throw new IllegalArgumentException("Invalid FIRST packet");
+        }
+
         int maxSeq = buffer.getInt();
 
         byte[] nameBytes = new byte[buffer.remaining()];
@@ -68,8 +83,9 @@ public class PacketSerializer {
         p.setFileName(new String(nameBytes, StandardCharsets.UTF_8));
     }
 
-    //  DATA
-
+    /**
+     *  =============================== DATA ===============================
+     */
     private byte[] serializeData(Packet p) {
 
         byte[] data = p.getData();
@@ -87,17 +103,21 @@ public class PacketSerializer {
 
     private void deserializeData(ByteBuffer buffer, Packet p) {
 
+        if (buffer.remaining() == 0) {
+            throw new IllegalArgumentException("Empty DATA packet");
+        }
+
         byte[] data = new byte[buffer.remaining()];
         buffer.get(data);
 
         p.setData(data);
     }
 
-    //  LAST
+    /**
+     * =============================== LAST ===============================
+     */
 
     private byte[] serializeLast(Packet p) {
-
-        byte[] md5 = p.getMd5();
 
         int size = TRANSMISSION_ID_SIZE + SEQUENCE_NUMBER_SIZE + MD5_SIZE;
 
@@ -105,12 +125,16 @@ public class PacketSerializer {
 
         buffer.putShort(p.getTransmissionId());
         buffer.putInt(p.getSequenceNumber());
-        buffer.put(md5);
+        buffer.put(p.getMd5());
 
         return buffer.array();
     }
 
     private void deserializeLast(ByteBuffer buffer, Packet p) {
+
+        if (buffer.remaining() != MD5_SIZE) {
+            throw new IllegalArgumentException("Invalid LAST packet");
+        }
 
         byte[] md5 = new byte[MD5_SIZE];
         buffer.get(md5);
@@ -118,11 +142,10 @@ public class PacketSerializer {
         p.setMd5(md5);
     }
 
-    //  BUFFER
-
+    /**
+     * =============================== BUFFER ===============================
+      */
     private ByteBuffer createBuffer(int size) {
-        ByteBuffer buffer = ByteBuffer.allocate(size);
-        buffer.order(ByteOrder.BIG_ENDIAN);
-        return buffer;
+        return ByteBuffer.allocate(size).order(ByteOrder.BIG_ENDIAN);
     }
 }

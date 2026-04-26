@@ -10,8 +10,7 @@ public class Packet {
     private String fileName;
     private byte[] md5;
 
-    public Packet() {
-    }
+    private PacketType type;
 
     public short getTransmissionId() {
         return transmissionId;
@@ -59,5 +58,13 @@ public class Packet {
 
     public void setMd5(byte[] md5) {
         this.md5 = md5;
+    }
+
+    public PacketType getType() {
+        return type;
+    }
+
+    public void setType(PacketType type) {
+        this.type = type;
     }
 }
